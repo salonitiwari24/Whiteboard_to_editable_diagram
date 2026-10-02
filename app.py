@@ -13,6 +13,7 @@ import numpy as np
 import streamlit as st
 import torch
 
+from src.drawio_export import export_drawio_bytes
 from src.export import ExportError, export_bytes
 from src.pipeline import (
     DEFAULT_WEIGHTS,
@@ -116,7 +117,9 @@ def _graph_fingerprint(graph) -> tuple:
         (int(n), str(attrs.get("label")), str(attrs.get("shape_type")))
         for n, attrs in sorted(graph.nodes(data=True))
     )
-    edges = tuple(sorted(tuple(sorted(e)) for e in graph.edges()))
+    edges = tuple(
+        sorted(tuple(e) if graph.is_directed() else tuple(sorted(e)) for e in graph.edges())
+    )
     return nodes, edges
 
 
@@ -157,6 +160,14 @@ def _export_buttons() -> None:
         file_name="whiteboard_diagram.pdf",
         mime="application/pdf",
         use_container_width=True,
+    )
+    st.sidebar.download_button(
+        "Download draw.io (editable)",
+        data=export_drawio_bytes(graph),
+        file_name="whiteboard_diagram.drawio",
+        mime="application/xml",
+        use_container_width=True,
+        help="Open in app.diagrams.net or draw.io Desktop to keep editing.",
     )
     with st.sidebar.expander("DOT source"):
         st.code(to_dot(graph), language="dot")
@@ -224,7 +235,7 @@ def _editor_panel() -> None:
         if len(node_ids) >= 2:
             e1 = st.selectbox("From", node_options, key="edge_a")
             e2 = st.selectbox("To", node_options, key="edge_b")
-            if st.button("Add undirected edge", key="btn_add_edge"):
+            if st.button("Add edge (From → To)", key="btn_add_edge"):
                 a, b = id_by_label[e1], id_by_label[e2]
                 if a == b:
                     st.warning("Pick two different nodes.")
@@ -235,21 +246,29 @@ def _editor_panel() -> None:
         else:
             st.caption("Need at least two nodes to add an edge.")
 
-        st.markdown("**Delete edge**")
-        edges = [tuple(sorted(e)) for e in graph.edges()]
+        st.markdown("**Edit edge**")
+        edges = list(graph.edges())
         if edges:
+            arrow = "→" if graph.is_directed() else "—"
             edge_labels = [
-                f"{u} ({graph.nodes[u].get('label')}) — {v} ({graph.nodes[v].get('label')})"
+                f"{u} ({graph.nodes[u].get('label')}) {arrow} {v} ({graph.nodes[v].get('label')})"
                 for u, v in edges
             ]
             edge_pick = st.selectbox("Edge", edge_labels, key="del_edge_pick")
-            if st.button("Delete edge", key="btn_del_edge"):
-                u, v = edges[edge_labels.index(edge_pick)]
+            u, v = edges[edge_labels.index(edge_pick)]
+            col_rev, col_del = st.columns(2)
+            if graph.is_directed() and col_rev.button("Reverse direction", key="btn_rev_edge"):
+                attrs = dict(graph.edges[u, v])
+                graph.remove_edge(u, v)
+                graph.add_edge(v, u, **attrs)
+                st.session_state.graph = graph
+                st.rerun()
+            if col_del.button("Delete edge", key="btn_del_edge"):
                 graph.remove_edge(u, v)
                 st.session_state.graph = graph
                 st.rerun()
         else:
-            st.caption("No edges to delete.")
+            st.caption("No edges to edit.")
 
 
 def main() -> None:

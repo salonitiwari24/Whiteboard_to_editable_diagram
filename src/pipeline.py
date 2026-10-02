@@ -10,8 +10,9 @@ import cv2
 import numpy as np
 import torch
 
+from src.direction import orient_matches
 from src.graph_builder import build_graph
-from src.localization import localize, render_line_debug
+from src.localization import _estimate_stroke_width, localize, render_line_debug
 from src.model import classify_bgr_crops, load_checkpoint
 from src.ocr import SHAPE_CLASSES, ShapeOCR
 from src.relationships import (
@@ -25,6 +26,9 @@ from src.relationships import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_WEIGHTS = PROJECT_ROOT / "models" / "shape_classifier.pth"
+
+# Set False to restore the previous behaviour (direction = matcher endpoint order).
+USE_ARROWHEAD_DIRECTION = True
 
 
 @dataclass
@@ -203,7 +207,22 @@ def run_pipeline(
         }
         for n in shape_nodes
     ]
-    graph = build_graph(graph_nodes, matches)
+    if USE_ARROWHEAD_DIRECTION and matches:
+        directed_edges, dir_infos = orient_matches(
+            matches,
+            loc.binary,
+            [n["contour"] for n in shape_nodes],
+            _estimate_stroke_width(loc.binary),
+            segments=list(loc.lines) + list(loc.raw_lines),
+        )
+        n_conf = sum(1 for d in dir_infos if d.confident)
+        log.append(
+            f"Arrowhead direction: {n_conf}/{len(dir_infos)} edge(s) oriented confidently "
+            f"(others keep matcher order)."
+        )
+        graph = build_graph(graph_nodes, directed_edges)
+    else:
+        graph = build_graph(graph_nodes, matches)
     log.append(f"Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges.")
 
     return PipelineResult(
