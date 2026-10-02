@@ -17,10 +17,14 @@ def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def graph_to_styled_dot(graph: nx.Graph, graph_name: str = "whiteboard") -> str:
-    """Undirected DOT with Graphviz shapes mapped from ``shape_type``."""
+def graph_to_styled_dot(graph: nx.Graph | nx.DiGraph, graph_name: str = "whiteboard") -> str:
+    """Styled DOT with Graphviz shapes and edge arrows when directed."""
+    is_dir = graph.is_directed()
+    kind = "digraph" if is_dir else "graph"
+    op = "->" if is_dir else "--"
+
     lines = [
-        f"graph {graph_name} {{",
+        f"{kind} {graph_name} {{",
         "  rankdir=LR;",
         '  bgcolor="white";',
         '  node [fontname="Helvetica", style=filled, color="#334155"];',
@@ -34,8 +38,8 @@ def graph_to_styled_dot(graph: nx.Graph, graph_name: str = "whiteboard") -> str:
         lines.append(
             f'  n{node_id} [label="{label}", shape={gv_shape}, fillcolor="{fill}"];'
         )
-    for u, v in sorted(tuple(sorted(e)) for e in graph.edges()):
-        lines.append(f"  n{u} -- n{v};")
+    for u, v in graph.edges():
+        lines.append(f"  n{u} {op} n{v};")
     lines.append("}")
     return "\n".join(lines) + "\n"
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
@@ -54,7 +55,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--ocr-gpu",
         action="store_true",
-        help="Run EasyOCR on CUDA (off by default; more stable on CPU).",
+        help="Run EasyOCR on CUDA (off by default; CPU uses optimized multi-threading).",
+    )
+    parser.add_argument(
+        "--skip-ocr",
+        action="store_true",
+        help="Explicitly skip OCR stage for relationship-only benchmarking.",
     )
     return parser.parse_args(argv)
 
@@ -73,7 +79,6 @@ def build_labeled_demo_whiteboard() -> np.ndarray:
     board = board.astype(np.uint8)
 
     ink = (25, 25, 25)
-    # Keep a visible gap between arrows and shapes so strokes stay separate contours.
     boxes = [
         ((60, 170, 200, 130), "Start"),
         ((430, 170, 250, 130), "Process Data"),
@@ -177,11 +182,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Input: {source}  ({w}x{h})")
 
     # A. Localization
+    t0 = time.perf_counter()
     loc = localize(image)
+    t_loc = time.perf_counter() - t0
     candidates = loc.all_candidates
-    print(f"A. Localized {len(loc.shapes)} compact + {len(loc.arrows)} elongated contour(s).")
+    print(f"A. Localized {len(loc.shapes)} compact + {len(loc.arrows)} elongated contour(s) in {t_loc:.2f}s.")
 
     # B. CNN classification (source of truth for shape vs arrow)
+    t0 = time.perf_counter()
     preds = classify_bgr_crops([c.crop for c in candidates], model, device)
     shape_nodes: list[dict] = []
     arrow_refs: list[ArrowRef] = []
@@ -213,25 +221,37 @@ def main(argv: list[str] | None = None) -> int:
     if len(shape_nodes) != before:
         print(f"   dropped {before - len(shape_nodes)} nested crop(s) (likely interior text).")
 
+    t_cls = time.perf_counter() - t0
     print(
-        f"B. Classifier: {len(shape_nodes)} shape node(s), {n_contour_arrows} contour arrow(s) "
+        f"B. Classifier ({t_cls:.2f}s): {len(shape_nodes)} shape node(s), {n_contour_arrows} contour arrow(s) "
         f"+ {len(loc.lines)} Hough connector(s) (classes={list(CLASS_NAMES)})."
     )
 
     # C. OCR on shape crops only
-    ocr = ShapeOCR(min_confidence=args.ocr_min_confidence, gpu=args.ocr_gpu)
-    for node in shape_nodes:
-        result = ocr.read_shape(node["crop"], node["id"])
-        node["label"] = result.text
-        node["ocr_confidence"] = result.confidence
-        node["ocr_fallback"] = result.used_fallback
-        print(
-            f"C. node {node['id']} ({node['shape_type']}) "
-            f"-> '{result.text}'  ocr_conf={result.confidence:.2f}"
-            f"{' [fallback]' if result.used_fallback else ''}"
-        )
+    t_ocr = 0.0
+    if args.skip_ocr:
+        print("C. OCR skipped by explicit user flag (--skip-ocr). Labels remain fallback defaults.")
+    else:
+        t0 = time.perf_counter()
+        ocr = ShapeOCR(min_confidence=args.ocr_min_confidence, gpu=args.ocr_gpu)
+        print(f"C. Running OCR on {len(shape_nodes)} shape node(s)...")
+        for idx, node in enumerate(shape_nodes):
+            tn0 = time.perf_counter()
+            result = ocr.read_shape(node["crop"], node["id"])
+            tn_dt = time.perf_counter() - tn0
+            node["label"] = result.text
+            node["ocr_confidence"] = result.confidence
+            node["ocr_fallback"] = result.used_fallback
+            print(
+                f"   [{idx+1:2d}/{len(shape_nodes)}] node {node['id']} ({node['shape_type']}) "
+                f"-> '{result.text}'  ocr_conf={result.confidence:.2f} ({tn_dt:.2f}s)"
+                f"{' [fallback]' if result.used_fallback else ''}"
+            )
+        t_ocr = time.perf_counter() - t0
+        print(f"   OCR completed for all {len(shape_nodes)} nodes in {t_ocr:.2f}s.")
 
     # D. Geometric undirected edges (Hough lines + contour arrows)
+    t0 = time.perf_counter()
     shape_refs = [
         ShapeRef(node_id=n["id"], bbox=n["bbox"], contour=n["contour"]) for n in shape_nodes
     ]
@@ -244,8 +264,9 @@ def main(argv: list[str] | None = None) -> int:
         debug=match_debug,
         verbose=True,
     )
+    t_match = time.perf_counter() - t0
     print(
-        f"D. Matched {len(matches)} undirected edge(s) "
+        f"D. Matched {len(matches)} undirected edge(s) in {t_match:.2f}s "
         f"(adaptive max endpoint dist={match_debug.max_endpoint_distance:.1f}px, "
         f"{len(match_debug.rejected)} rejected)."
     )
@@ -270,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"   debug overlay: {debug_path}")
 
     # E. NetworkX graph
+    t0 = time.perf_counter()
     graph_nodes = [
         {
             "id": n["id"],
@@ -281,7 +303,8 @@ def main(argv: list[str] | None = None) -> int:
         for n in shape_nodes
     ]
     graph = build_graph(graph_nodes, matches)
-    print(f"E. Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges.")
+    t_graph = time.perf_counter() - t0
+    print(f"E. Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges ({t_graph:.2f}s).")
 
     # F. Log + JSON
     print("\nF. Summary")
@@ -304,6 +327,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"\nWrote {args.output}")
     print("DOT:\n" + payload["dot"])
+
+    total_time = t_loc + t_cls + t_ocr + t_match + t_graph
+    print(f"\nPipeline finished successfully in {total_time:.2f}s total.")
     return 0
 
 

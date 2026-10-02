@@ -209,14 +209,21 @@ def _crosses_unrelated_shape(
     node_b: int,
     shapes: list[ShapeRef],
 ) -> bool:
-    mid = ((p1[0] + p2[0]) * 0.5, (p1[1] + p2[1]) * 0.5)
-    hit = nearest_shape(mid, shapes)
-    if hit is None:
-        return False
-    shape, dist = hit
-    if dist > 1.0:
-        return False
-    return shape.node_id not in (node_a, node_b)
+    samples = _sample_segment(p1, p2, n=14)[2:-2]
+    for pt in samples:
+        for shape in shapes:
+            if shape.node_id in (node_a, node_b):
+                continue
+            if shape.contour is not None and len(shape.contour) >= 3:
+                dist = cv2.pointPolygonTest(shape.contour, (float(pt[0]), float(pt[1])), True)
+                if dist > 5.0:
+                    return True
+            else:
+                x, y, w, h = shape.bbox
+                px, py = pt
+                if (x + 6 <= px <= x + w - 6) and (y + 6 <= py <= y + h - 6):
+                    return True
+    return False
 
 
 def match_arrows_to_shapes(
@@ -283,7 +290,7 @@ def match_arrows_to_shapes(
             ]
             for p_start, p_join1, p_join2, p_end in combos:
                 join_d = float(np.hypot(p_join1[0] - p_join2[0], p_join1[1] - p_join2[1]))
-                if join_d <= 22.0:
+                if join_d <= 42.0:
                     hit_a = nearest_shape(p_start, shapes)
                     hit_b = nearest_shape(p_end, shapes)
                     if hit_a and hit_b:
@@ -396,13 +403,13 @@ def match_arrows_to_shapes(
         existing = seen.get(pair)
         if existing is not None:
             _reject(
-                idx, end_a, end_b, lo, hi, dist_a, dist_b, "duplicate_pair"
+                idx, end_a, end_b, shape_a.node_id, shape_b.node_id, dist_a, dist_b, "duplicate_pair"
             )
             continue
 
         match = EdgeMatch(
-            node_a=lo,
-            node_b=hi,
+            node_a=shape_a.node_id,
+            node_b=shape_b.node_id,
             arrow_index=idx,
             endpoint_a=end_a,
             endpoint_b=end_b,

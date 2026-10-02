@@ -19,9 +19,10 @@ GRAPHVIZ_SHAPES = {
 def build_graph(
     nodes: Iterable[dict[str, Any]],
     edges: Iterable[EdgeMatch] | Iterable[tuple[int, int]],
-) -> nx.Graph:
-    """Create ``nx.Graph`` with node attrs: shape_type, label, bbox, confidence."""
-    graph = nx.Graph()
+    directed: bool = True,
+) -> nx.Graph | nx.DiGraph:
+    """Create NetworkX graph (nx.DiGraph by default) with node and edge attributes."""
+    graph = nx.DiGraph() if directed else nx.Graph()
     for node in nodes:
         node_id = int(node["id"])
         bbox = node.get("bbox", (0, 0, 0, 0))
@@ -52,8 +53,8 @@ def build_graph(
     return graph
 
 
-def graph_to_dict(graph: nx.Graph) -> dict[str, Any]:
-    """JSON-friendly snapshot of nodes and undirected edges."""
+def graph_to_dict(graph: nx.Graph | nx.DiGraph) -> dict[str, Any]:
+    """JSON-friendly snapshot of nodes and edges."""
     nodes = []
     for node_id, attrs in sorted(graph.nodes(data=True)):
         nodes.append(
@@ -67,7 +68,7 @@ def graph_to_dict(graph: nx.Graph) -> dict[str, Any]:
         )
     edges = [
         {"source": int(u), "target": int(v)}
-        for u, v in sorted(tuple(sorted(e)) for e in graph.edges())
+        for u, v in graph.edges()
     ]
     return {"nodes": nodes, "edges": edges}
 
@@ -76,23 +77,27 @@ def _escape_dot_label(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def graph_to_dot(graph: nx.Graph, graph_name: str = "whiteboard") -> str:
-    """Manual Graphviz DOT (undirected). Avoids a pydot extra dependency."""
-    lines = [f"graph {graph_name} {{", "  rankdir=LR;", '  node [fontname="Helvetica"];']
+def graph_to_dot(graph: nx.Graph | nx.DiGraph, graph_name: str = "whiteboard") -> str:
+    """Manual Graphviz DOT rendering (supports directed digraph and undirected graph)."""
+    is_dir = graph.is_directed()
+    kind = "digraph" if is_dir else "graph"
+    op = "->" if is_dir else "--"
+
+    lines = [f"{kind} {graph_name} {{", "  rankdir=LR;", '  node [fontname="Helvetica"];']
     for node_id, attrs in sorted(graph.nodes(data=True)):
         label = _escape_dot_label(str(attrs.get("label", f"Node_{node_id}")))
         gv_shape = GRAPHVIZ_SHAPES.get(str(attrs.get("shape_type", "box")), "box")
         lines.append(
             f'  n{node_id} [label="{label}", shape={gv_shape}];'
         )
-    for u, v in sorted(tuple(sorted(e)) for e in graph.edges()):
-        lines.append(f"  n{u} -- n{v};")
+    for u, v in graph.edges():
+        lines.append(f"  n{u} {op} n{v};")
     lines.append("}")
     return "\n".join(lines) + "\n"
 
 
 def save_graph_json(
-    graph: nx.Graph,
+    graph: nx.Graph | nx.DiGraph,
     path,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:

@@ -227,14 +227,72 @@ def _crop_bbox(
     return crop
 
 
+def _bbox_iou(
+    a: tuple[int, int, int, int], b: tuple[int, int, int, int]
+) -> float:
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    x0, y0 = max(ax, bx), max(ay, by)
+    x1, y1 = min(ax + aw, bx + bw), min(ay + ah, by + bh)
+    inter = max(0, x1 - x0) * max(0, y1 - y0)
+    union = aw * ah + bw * bh - inter
+    return float(inter / union) if union > 0 else 0.0
+
+
+def _parent_has_attached_shaft(parent: dict[str, float], hole: dict[str, float]) -> bool:
+    """True when an external contour extends well beyond its interior hole (arrow tail)."""
+    return (
+        parent["bbox_w"] > hole["bbox_w"] * 1.18
+        or parent["bbox_h"] > hole["bbox_h"] * 1.18
+        or parent["bbox_area"] > hole["bbox_area"] * 1.35
+    )
+
+
+def _expand_hole_contour(hole: np.ndarray, image_shape: tuple[int, int], pad: int) -> np.ndarray:
+    """Dilate a CCOMP hole so the candidate includes the surrounding ink stroke."""
+    h, w = image_shape
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.drawContours(mask, [hole], -1, 255, thickness=cv2.FILLED)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * pad + 1, 2 * pad + 1))
+    mask = cv2.dilate(mask, k, iterations=1)
+    found, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not found:
+        return hole
+    return max(found, key=cv2.contourArea)
+
+
+def _candidate_from_contour(image: np.ndarray, contour: np.ndarray, kind: CandidateKind) -> Candidate | None:
+    metrics = contour_metrics(contour)
+    if metrics is None:
+        return None
+    peri = metrics["perimeter"]
+    approx = cv2.approxPolyDP(contour, _APPROX_EPS_FRAC * peri, closed=True)
+    bbox = (
+        int(metrics["bbox_x"]),
+        int(metrics["bbox_y"]),
+        int(metrics["bbox_w"]),
+        int(metrics["bbox_h"]),
+    )
+    return Candidate(
+        kind=kind,
+        bbox=bbox,
+        crop=_crop_bbox(image, bbox),
+        contour=contour,
+        approx=approx,
+        metrics=metrics,
+    )
+
+
 def extract_candidates(
     image: np.ndarray,
     binary: np.ndarray | None = None,
 ) -> LocalizationResult:
     """Find contours on ``binary`` (or preprocess ``image``) and split them.
 
-    ``image`` should be the original BGR photo so crops look like the CNN's
-    synthetic training data (gray-white board + dark stroke).
+    Compact nodes are taken from EXTERNAL contours when they are clean, and
+    from CCOMP holes when arrows are glued onto a box/diamond (the hole is
+    the true node interior). ``image`` should be the original BGR photo so
+    crops look like the CNN's synthetic training data.
     """
     if binary is None:
         _, _, binary = preprocess(image)
@@ -243,48 +301,101 @@ def extract_candidates(
     img_area = float(img_h * img_w)
     min_area = max(_MIN_AREA_ABS, _MIN_AREA_FRAC * img_area)
     max_area = _MAX_AREA_FRAC * img_area
+    min_hole = max(400.0, 0.0012 * img_area)
+    stroke = max(2, int(round(_estimate_stroke_width(binary))))
 
-    contours, _hierarchy = cv2.findContours(
+    contours, hierarchy = cv2.findContours(
         binary,
-        cv2.RETR_EXTERNAL,
+        cv2.RETR_CCOMP,
         cv2.CHAIN_APPROX_SIMPLE,
     )
 
     shapes: list[Candidate] = []
     arrows: list[Candidate] = []
+    if hierarchy is None:
+        raw_lines, lines, hough_params, line_ink = detect_connector_lines(binary, shapes)
+        return LocalizationResult(
+            binary=binary,
+            shapes=shapes,
+            arrows=arrows,
+            lines=lines,
+            raw_lines=raw_lines,
+            hough_params=hough_params,
+            line_ink=line_ink,
+        )
 
-    for contour in contours:
+    hierarchy = hierarchy[0]
+    children: dict[int, list[int]] = {}
+    externals: list[int] = []
+    for i, _contour in enumerate(contours):
+        parent = int(hierarchy[i][3])
+        if parent == -1:
+            externals.append(i)
+        else:
+            children.setdefault(parent, []).append(i)
+
+    def _qualifying_holes(parent_idx: int) -> list[tuple[int, dict[str, float]]]:
+        found: list[tuple[int, dict[str, float]]] = []
+        for hi in children.get(parent_idx, []):
+            hm = contour_metrics(contours[hi])
+            if hm is None:
+                continue
+            if hm["area"] < min_hole or hm["area"] > max_area:
+                continue
+            if min(hm["bbox_w"], hm["bbox_h"]) < 22:
+                continue
+            if _looks_like_text(hm, img_area):
+                continue
+            if not _is_compact_node(hm, img_area) and hm["solidity"] < 0.45:
+                continue
+            found.append((hi, hm))
+        return found
+
+    def _add_shape(contour: np.ndarray) -> None:
+        cand = _candidate_from_contour(image, contour, "shape")
+        if cand is None:
+            return
+        if cand.metrics["area"] < min_area or cand.metrics["area"] > max_area:
+            return
+        if _looks_like_text(cand.metrics, img_area):
+            return
+        for existing in shapes:
+            if _bbox_iou(cand.bbox, existing.bbox) >= 0.45:
+                return
+        shapes.append(cand)
+
+    for i in externals:
+        contour = contours[i]
         metrics = contour_metrics(contour)
         if metrics is None:
             continue
-        if metrics["area"] < min_area or metrics["area"] > max_area:
+        if metrics["area"] > max_area:
             continue
 
         kind = _kind_from_metrics(metrics)
-        if kind is None:
+        holes = _qualifying_holes(i)
+        split_cluster = len(holes) >= 2 or (
+            len(holes) == 1 and (kind is None or _parent_has_attached_shaft(metrics, holes[0][1]))
+        )
+
+        if split_cluster:
+            for hi, _hm in holes:
+                expanded = _expand_hole_contour(contours[hi], (img_h, img_w), pad=max(3, stroke))
+                _add_shape(expanded)
+            if kind == "arrow" and metrics["area"] >= min_area:
+                cand = _candidate_from_contour(image, contour, "arrow")
+                if cand is not None:
+                    arrows.append(cand)
             continue
 
-        peri = metrics["perimeter"]
-        approx = cv2.approxPolyDP(contour, _APPROX_EPS_FRAC * peri, closed=True)
-        x, y, w, h = (
-            int(metrics["bbox_x"]),
-            int(metrics["bbox_y"]),
-            int(metrics["bbox_w"]),
-            int(metrics["bbox_h"]),
-        )
-        bbox = (x, y, w, h)
-        candidate = Candidate(
-            kind=kind,
-            bbox=bbox,
-            crop=_crop_bbox(image, bbox),
-            contour=contour,
-            approx=approx,
-            metrics=metrics,
-        )
-        if kind == "shape":
-            shapes.append(candidate)
-        else:
-            arrows.append(candidate)
+        if metrics["area"] < min_area:
+            continue
+        if kind == "shape" and not _looks_like_text(metrics, img_area):
+            _add_shape(contour)
+        elif kind == "arrow":
+            cand = _candidate_from_contour(image, contour, "arrow")
+            if cand is not None:
+                arrows.append(cand)
 
     raw_lines, lines, hough_params, line_ink = detect_connector_lines(binary, shapes)
     return LocalizationResult(
@@ -348,17 +459,23 @@ def _looks_like_text(m: dict[str, float], img_area: float) -> bool:
 
 
 def _shape_fill_mask(binary_shape: tuple[int, int], shapes: list[Candidate]) -> np.ndarray:
-    """Filled compact nodes only — bloated merged contours are skipped."""
+    """Filled compact node interiors, with thin attached shafts stripped."""
     mask = np.zeros(binary_shape, dtype=np.uint8)
     img_area = float(binary_shape[0] * binary_shape[1])
+    open_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     for shape in shapes:
         if _is_bloated_shape(shape.metrics, img_area):
             continue
+        piece = np.zeros(binary_shape, dtype=np.uint8)
         if shape.contour is None or len(shape.contour) < 3:
             x, y, w, h = shape.bbox
-            cv2.rectangle(mask, (x, y), (x + w, y + h), 255, thickness=cv2.FILLED)
+            cv2.rectangle(piece, (x, y), (x + w, y + h), 255, thickness=cv2.FILLED)
         else:
-            cv2.drawContours(mask, [shape.contour], -1, 255, thickness=cv2.FILLED)
+            cv2.drawContours(piece, [shape.contour], -1, 255, thickness=cv2.FILLED)
+        opened = cv2.morphologyEx(piece, cv2.MORPH_OPEN, open_k, iterations=1)
+        if cv2.countNonZero(opened) < 40:
+            opened = piece
+        mask = cv2.bitwise_or(mask, opened)
     return mask
 
 
@@ -384,12 +501,19 @@ def _hole_and_node_mask(binary: np.ndarray) -> np.ndarray:
         if metrics is None:
             continue
         parent = int(hierarchy[i][3])
+        child_count = int(sum(1 for j, row in enumerate(hierarchy) if int(row[3]) == i))
         if parent != -1:
             if min_hole <= metrics["area"] < 0.35 * img_area:
                 cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
             continue
-        if _is_compact_node(metrics, img_area):
-            cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+        # Do not fill glued clusters (box+arrows): that erases neighboring shafts.
+        if child_count >= 2:
+            continue
+        if not _is_compact_node(metrics, img_area):
+            continue
+        if metrics["solidity"] < 0.62 or metrics["extent"] < 0.40:
+            continue
+        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
     return mask
 
 
@@ -416,48 +540,52 @@ def _is_page_or_grid_line(seg: LineSegment, img_w: int, img_h: int) -> bool:
     """Filter out image frame / page border lines and long canvas grid lines."""
     x1, y1 = seg.p1
     x2, y2 = seg.p2
-    margin = 15
+    margin = 12
 
     near_top = (y1 <= margin and y2 <= margin)
     near_bottom = (y1 >= img_h - margin and y2 >= img_h - margin)
     near_left = (x1 <= margin and x2 <= margin)
     near_right = (x1 >= img_w - margin and x2 >= img_w - margin)
 
-    if (near_top or near_bottom or near_left or near_right) and seg.length > 0.22 * min(img_w, img_h):
+    if (near_top or near_bottom or near_left or near_right) and seg.length > 0.30 * min(img_w, img_h):
         return True
 
-    # Long straight line near borders
-    if (x1 < margin or x2 < margin or x1 > img_w - margin or x2 > img_w - margin) and abs(y2 - y1) > 0.40 * img_h:
+    # Spans across > 65% of width or height horizontally/vertically extremely near image edge
+    if abs(x2 - x1) > 0.65 * img_w and abs(y2 - y1) < 10 and (y1 < 15 or y1 > img_h - 15):
         return True
-    if (y1 < margin or y2 < margin or y1 > img_h - margin or y2 > img_h - margin) and abs(x2 - x1) > 0.40 * img_w:
-        return True
-
-    # Spans across > 45% of width or height horizontally/vertically near image edge
-    if abs(x2 - x1) > 0.45 * img_w and abs(y2 - y1) < 12 and (y1 < 25 or y1 > img_h - 25):
-        return True
-    if abs(y2 - y1) > 0.45 * img_h and abs(x2 - x1) < 12 and (x1 < 25 or x1 > img_w - 25):
+    if abs(y2 - y1) > 0.65 * img_h and abs(x2 - x1) < 10 and (x1 < 15 or x1 > img_w - 15):
         return True
 
     return False
 
 
-def _is_on_shape_border(seg: LineSegment, shapes: list[Candidate]) -> bool:
-    """True if the line segment's midpoint lies directly on a shape contour/border."""
-    if not shapes:
+def _is_on_shape_border(seg: LineSegment, shapes: list[Candidate], tol: float = 2.5) -> bool:
+    """True if most of the segment rides a node outline rather than a shaft."""
+    if not shapes or seg.length < 15:
         return False
-    mid = ((seg.p1[0] + seg.p2[0]) * 0.5, (seg.p1[1] + seg.p2[1]) * 0.5)
+    samples = []
+    n = 11
+    for t in np.linspace(0.1, 0.9, n):
+        samples.append(
+            (seg.p1[0] + t * (seg.p2[0] - seg.p1[0]), seg.p1[1] + t * (seg.p2[1] - seg.p1[1]))
+        )
     for s in shapes:
-        if s.contour is not None and len(s.contour) >= 3:
-            dist = abs(cv2.pointPolygonTest(s.contour, mid, measureDist=True))
-            if dist <= 5.0:
-                return True
-        else:
-            x, y, w, h = s.bbox
-            if (x - 5 <= mid[0] <= x + w + 5) and (y - 5 <= mid[1] <= y + h + 5):
-                on_horiz = (abs(mid[1] - y) <= 5) or (abs(mid[1] - (y + h)) <= 5)
-                on_vert = (abs(mid[0] - x) <= 5) or (abs(mid[0] - (x + w)) <= 5)
-                if on_horiz or on_vert:
-                    return True
+        hits = 0
+        for pt in samples:
+            if s.contour is not None and len(s.contour) >= 3:
+                dist = abs(cv2.pointPolygonTest(s.contour, (float(pt[0]), float(pt[1])), True))
+                if dist <= tol:
+                    hits += 1
+            else:
+                x, y, w, h = s.bbox
+                px, py = pt
+                inside = (x - tol <= px <= x + w + tol) and (y - tol <= py <= y + h + tol)
+                on_horiz = abs(py - y) <= tol or abs(py - (y + h)) <= tol
+                on_vert = abs(px - x) <= tol or abs(px - (x + w)) <= tol
+                if inside and (on_horiz or on_vert):
+                    hits += 1
+        if hits / float(len(samples)) >= 0.82:
+            return True
     return False
 
 
@@ -720,6 +848,103 @@ def _drop_near_duplicates(
     return kept
 
 
+def _ink_fraction_along(
+    binary: np.ndarray,
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    n: int = 18,
+    band: int = 2,
+) -> float:
+    h, w = binary.shape[:2]
+    if n < 2:
+        return 0.0
+    xs = np.linspace(p1[0], p2[0], n)
+    ys = np.linspace(p1[1], p2[1], n)
+    hits = 0
+    for x, y in zip(xs, ys):
+        xi, yi = int(round(x)), int(round(y))
+        found = False
+        for dy in range(-band, band + 1):
+            for dx in range(-band, band + 1):
+                xx, yy = xi + dx, yi + dy
+                if 0 <= xx < w and 0 <= yy < h and binary[yy, xx] > 0:
+                    found = True
+                    break
+            if found:
+                break
+        if found:
+            hits += 1
+    return hits / float(n)
+
+
+def _facing_gap_connectors(
+    binary: np.ndarray,
+    shapes: list[Candidate],
+    existing: list[LineSegment],
+) -> list[LineSegment]:
+    """Recover short axis-aligned shafts between nearby facing node sides.
+
+    Used when Hough misses a short arrow sitting in a small gap; requires
+    ink along the gap, not merely proximity of two boxes.
+    """
+    if len(shapes) < 2:
+        return []
+    img_h, img_w = binary.shape[:2]
+    max_gap = max(28.0, 0.09 * min(img_w, img_h))
+    min_gap = 6.0
+    added: list[LineSegment] = []
+
+    def _already_covered(seg: LineSegment) -> bool:
+        for other in existing + added:
+            if _angle_delta(_angle(seg), _angle(other)) > np.deg2rad(18.0):
+                continue
+            off = max(
+                _point_to_infinite_line(seg.p1, other),
+                _point_to_infinite_line(seg.p2, other),
+            )
+            if off <= 8.0 and _projections_overlap_or_near(seg, other, 10.0):
+                return True
+        return False
+
+    for i, sa in enumerate(shapes):
+        ax, ay, aw, ah = sa.bbox
+        for sb in shapes[i + 1 :]:
+            bx, by, bw, bh = sb.bbox
+            candidates: list[tuple[tuple[float, float], tuple[float, float]]] = []
+            y_overlap = min(ay + ah, by + bh) - max(ay, by)
+            x_overlap = min(ax + aw, bx + bw) - max(ax, bx)
+            if y_overlap >= 0.22 * min(ah, bh):
+                if ax + aw <= bx:
+                    gap = float(bx - (ax + aw))
+                    if min_gap <= gap <= max_gap:
+                        y = 0.5 * (max(ay, by) + min(ay + ah, by + bh))
+                        candidates.append(((float(ax + aw), y), (float(bx), y)))
+                elif bx + bw <= ax:
+                    gap = float(ax - (bx + bw))
+                    if min_gap <= gap <= max_gap:
+                        y = 0.5 * (max(ay, by) + min(ay + ah, by + bh))
+                        candidates.append(((float(bx + bw), y), (float(ax), y)))
+            if x_overlap >= 0.22 * min(aw, bw):
+                if ay + ah <= by:
+                    gap = float(by - (ay + ah))
+                    if min_gap <= gap <= max_gap:
+                        x = 0.5 * (max(ax, bx) + min(ax + aw, bx + bw))
+                        candidates.append(((x, float(ay + ah)), (x, float(by))))
+                elif by + bh <= ay:
+                    gap = float(ay - (by + bh))
+                    if min_gap <= gap <= max_gap:
+                        x = 0.5 * (max(ax, bx) + min(ax + aw, bx + bw))
+                        candidates.append(((x, float(by + bh)), (x, float(ay))))
+            for p1, p2 in candidates:
+                if _ink_fraction_along(binary, p1, p2) < 0.42:
+                    continue
+                seg = LineSegment(p1=p1, p2=p2, source="gap")
+                if _already_covered(seg) or _is_on_shape_border(seg, shapes):
+                    continue
+                added.append(seg)
+    return added
+
+
 def detect_connector_lines(
     binary: np.ndarray,
     shapes: list[Candidate],
@@ -768,7 +993,8 @@ def detect_connector_lines(
     min_keep = float(max(8.0, 0.010 * min_side))
     merged = [s for s in merged if s.length >= min_keep]
     merged = [s for s in merged if not _is_page_or_grid_line(s, img_w, img_h)]
-    merged = [s for s in merged if not _is_on_shape_border(s, shapes)]
+    gap_segs = _facing_gap_connectors(binary, shapes, merged)
+    merged.extend(gap_segs)
     merged = _drop_near_duplicates(merged, dist_px=8.0, angle_deg=8.0)
     return filtered_raw, merged, params, ink
 

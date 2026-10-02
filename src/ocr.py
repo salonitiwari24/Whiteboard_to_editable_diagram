@@ -85,9 +85,14 @@ class ShapeOCR:
             print(f"[ocr] EasyOCR not available ({exc}); using fallback labels.")
             return None
 
-        # CPU is the default: EasyOCR on CUDA often deadlocks with OpenCV/PyTorch
-        # OpenMP on Windows. A handful of shape crops is fast enough on CPU.
         use_gpu = False if self.gpu is None else self.gpu
+        if not use_gpu:
+            try:
+                import torch
+                num_threads = min(4, os.cpu_count() or 4)
+                torch.set_num_threads(num_threads)
+            except Exception:
+                pass
         print(f"[ocr] Loading EasyOCR (gpu={use_gpu})...", flush=True)
         self._reader = easyocr.Reader(self.languages, gpu=use_gpu, verbose=False)
         print("[ocr] EasyOCR ready.", flush=True)
@@ -103,7 +108,9 @@ class ShapeOCR:
         prepared = preprocess_shape_crop(crop)
         rgb = cv2.cvtColor(prepared, cv2.COLOR_BGR2RGB)
         try:
-            detections = reader.readtext(rgb, detail=1, paragraph=False)
+            import torch
+            with torch.no_grad():
+                detections = reader.readtext(rgb, detail=1, paragraph=False)
         except Exception as exc:  # EasyOCR/runtime glitches should not kill the pipeline
             print(f"[ocr] read failed for node {node_id}: {exc}")
             return OCRResult(text=fallback, confidence=0.0, used_fallback=True)
