@@ -1,0 +1,100 @@
+Device: cpu
+Input: D:\Third year\DL\CP\Project_Original\data\test_real\flowchart_clean_a.jpg  (1024x682)
+A. Localized 27 compact + 4 elongated contour(s) in 0.29s.
+   dropped 4 nested crop(s) (likely interior text).
+B. Classifier (0.85s): 15 shape node(s), 12 contour arrow(s) + 59 Hough connector(s) (classes=['box', 'circle', 'diamond', 'arrow']).
+C. Running OCR on 15 shape node(s)...
+[ocr] EasyOCR not available (No module named 'easyocr'); using fallback labels.
+   [ 1/15] node 0 (box) -> 'Node_0'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 2/15] node 1 (circle) -> 'Node_1'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 3/15] node 2 (diamond) -> 'Node_2'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 4/15] node 3 (box) -> 'Node_3'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 5/15] node 4 (box) -> 'Node_4'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 6/15] node 5 (diamond) -> 'Node_5'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 7/15] node 6 (circle) -> 'Node_6'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 8/15] node 7 (box) -> 'Node_7'  ocr_conf=0.00 (0.00s) [fallback]
+   [ 9/15] node 8 (box) -> 'Node_8'  ocr_conf=0.00 (0.00s) [fallback]
+   [10/15] node 9 (box) -> 'Node_9'  ocr_conf=0.00 (0.00s) [fallback]
+   [11/15] node 10 (diamond) -> 'Node_10'  ocr_conf=0.00 (0.00s) [fallback]
+   [12/15] node 11 (box) -> 'Node_11'  ocr_conf=0.00 (0.00s) [fallback]
+   [13/15] node 12 (box) -> 'Node_12'  ocr_conf=0.00 (0.00s) [fallback]
+   [14/15] node 13 (diamond) -> 'Node_13'  ocr_conf=0.00 (0.00s) [fallback]
+   [15/15] node 14 (box) -> 'Node_14'  ocr_conf=0.00 (0.00s) [fallback]
+   OCR completed for all 15 nodes in 0.00s.
+D. Matched 10 undirected edge(s) in 0.23s (adaptive max endpoint dist=86.1px, 328 rejected).
+   1 -- 5  (arrow 12, d=0.0/0.0)
+   13 -- 12  (arrow 37, d=0.0/0.0)
+   4 -- 5  (arrow 21, d=0.0/0.7)
+   8 -- 9  (arrow 26, d=0.7/0.0)
+   5 -- 3  (arrow 25, d=1.0/0.0)
+   10 -- 14  (arrow 29, d=0.7/2.0)
+   10 -- 8  (arrow 15, d=0.0/3.0)
+   0 -- 2  (arrow 34, d=5.0/0.0)
+   7 -- 13  (arrow 30, d=7.0/0.0)
+   6 -- 2  (arrow 1, d=72.7/3.0)
+   debug overlay: D:\Third year\DL\CP\Project_Original\data\debug\phase3_relationship_debug.png
+E. Graph: 15 nodes, 10 edges (0.00s).
+
+F. Summary
+  Nodes:
+    id=0  type=box       label='Node_0'  conf=0.892  bbox=(203, 621, 120, 41)
+    id=1  type=circle    label='Node_1'  conf=1.000  bbox=(707, 537, 88, 88)
+    id=2  type=diamond   label='Node_2'  conf=1.000  bbox=(198, 497, 124, 86)
+    id=3  type=box       label='Node_3'  conf=0.988  bbox=(849, 399, 132, 49)
+    id=4  type=box       label='Node_4'  conf=1.000  bbox=(531, 390, 117, 61)
+    id=5  type=diamond   label='Node_5'  conf=1.000  bbox=(694, 387, 110, 76)
+    id=6  type=circle    label='Node_6'  conf=1.000  bbox=(58, 374, 91, 91)
+    id=7  type=box       label='Node_7'  conf=1.000  bbox=(203, 211, 100, 49)
+    id=8  type=box       label='Node_8'  conf=0.975  bbox=(709, 186, 127, 55)
+    id=9  type=box       label='Node_9'  conf=0.998  bbox=(859, 185, 110, 55)
+    id=10  type=diamond   label='Node_10'  conf=1.000  bbox=(526, 165, 135, 97)
+    id=11  type=box       label='Node_11'  conf=1.000  bbox=(32, 110, 107, 60)
+    id=12  type=box       label='Node_12'  conf=0.999  bbox=(342, 120, 108, 54)
+    id=13  type=diamond   label='Node_13'  conf=1.000  bbox=(189, 83, 123, 83)
+    id=14  type=box       label='Node_14'  conf=1.000  bbox=(532, 70, 122, 54)
+  Edges:
+    0 -- 2
+    1 -- 5
+    2 -- 6
+    3 -- 5
+    4 -- 5
+    7 -- 13
+    8 -- 9
+    8 -- 10
+    10 -- 14
+    12 -- 13
+
+Wrote D:\Third year\DL\CP\Project_Original\data\phase3_output.json
+DOT:
+digraph whiteboard {
+  rankdir=LR;
+  node [fontname="Helvetica"];
+  n0 [label="Node_0", shape=box];
+  n1 [label="Node_1", shape=ellipse];
+  n2 [label="Node_2", shape=diamond];
+  n3 [label="Node_3", shape=box];
+  n4 [label="Node_4", shape=box];
+  n5 [label="Node_5", shape=diamond];
+  n6 [label="Node_6", shape=ellipse];
+  n7 [label="Node_7", shape=box];
+  n8 [label="Node_8", shape=box];
+  n9 [label="Node_9", shape=box];
+  n10 [label="Node_10", shape=diamond];
+  n11 [label="Node_11", shape=box];
+  n12 [label="Node_12", shape=box];
+  n13 [label="Node_13", shape=diamond];
+  n14 [label="Node_14", shape=box];
+  n0 -> n2;
+  n1 -> n5;
+  n4 -> n5;
+  n5 -> n3;
+  n6 -> n2;
+  n7 -> n13;
+  n8 -> n9;
+  n10 -> n14;
+  n10 -> n8;
+  n13 -> n12;
+}
+
+
+Pipeline finished successfully in 1.37s total.

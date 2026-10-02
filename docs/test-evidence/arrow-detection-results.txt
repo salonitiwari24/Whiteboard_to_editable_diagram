@@ -1,0 +1,139 @@
+
+=== synthetic_demo ===
+  Localized 6 compact and 3 elongated contour(s); 42 raw Hough line(s) merged to 30 connector(s).
+  Classifier kept 5 shape node(s) and 4 contour arrow(s); matching uses 34 shaft candidate(s) including Hough lines.
+  Matched 3 undirected edge(s) (max endpoint dist=89.1px, rejected=181).
+  Wrote relationship debug overlay to D:\Third year\DL\CP\Project_Original\data\debug\synthetic_demo\relationship_debug.png
+  Wrote line-detection debug panel to D:\Third year\DL\CP\Project_Original\data\debug\synthetic_demo\line_debug.png
+  Graph: 5 nodes, 3 edges.
+ nodes=5  edges=3  contour_arrows=4  hough=30
+ debug=D:\Third year\DL\CP\Project_Original\data\debug\synthetic_demo\relationship_debug.png
+ directed edges:
+   0:circle('Node_0') -> 1:diamond('Node_1')
+   3:box('Node_3') -> 2:box('Node_2')
+   3:box('Node_3') -> 4:box('Node_4')
+ Evaluation Metrics (Directed):
+   Expected: 3  Detected: 3  TP: 2  FP: 1  FN: 1
+   Directed Precision: 0.667  Directed Recall: 0.667  Directed F1: 0.667  Direction Accuracy: 0.667
+   Missed Directed Edges (FN): [(2, 3)]
+   False Positive Directed Edges (FP): [(3, 2)]
+
+=== flowchart_clean_a ===
+  Localized 27 compact and 4 elongated contour(s); 88 raw Hough line(s) merged to 59 connector(s).
+  Dropped 4 nested crop(s) (interior text).
+  Classifier kept 15 shape node(s) and 12 contour arrow(s); matching uses 71 shaft candidate(s) including Hough lines.
+  Matched 10 undirected edge(s) (max endpoint dist=86.1px, rejected=328).
+  Wrote relationship debug overlay to D:\Third year\DL\CP\Project_Original\data\debug\flowchart_clean_a\relationship_debug.png
+  Wrote line-detection debug panel to D:\Third year\DL\CP\Project_Original\data\debug\flowchart_clean_a\line_debug.png
+  Graph: 15 nodes, 10 edges.
+ nodes=15  edges=10  contour_arrows=12  hough=59
+ debug=D:\Third year\DL\CP\Project_Original\data\debug\flowchart_clean_a\relationship_debug.png
+ directed edges:
+   0:box('Node_1') -> 2:diamond('Node_4')
+   1:circle('Node_3') -> 5:diamond('Node_8')
+   4:box('Node_7') -> 5:diamond('Node_8')
+   5:diamond('Node_8') -> 3:box('Node_6')
+   6:circle('Node_9') -> 2:diamond('Node_4')
+   7:box('Node_10') -> 13:diamond('Node_17')
+   8:box('Node_12') -> 9:box('Node_13')
+   10:diamond('Node_14') -> 8:box('Node_12')
+   10:diamond('Node_14') -> 14:box('Node_18')
+   13:diamond('Node_17') -> 12:box('Node_16')
+ Evaluation Metrics (Directed):
+   Expected: 10  Detected: 10  TP: 6  FP: 4  FN: 4
+   Directed Precision: 0.600  Directed Recall: 0.600  Directed F1: 0.600  Direction Accuracy: 0.600
+   Missed Directed Edges (FN): [(2, 6), (3, 5), (8, 10), (12, 13)]
+   False Positive Directed Edges (FP): [(5, 3), (6, 2), (10, 8), (13, 12)]
+
+=== flowchart_clean_b ===
+  Localized 17 compact and 9 elongated contour(s); 106 raw Hough line(s) merged to 82 connector(s).
+  Dropped 1 nested crop(s) (interior text).
+  Classifier kept 13 shape node(s) and 12 contour arrow(s); matching uses 94 shaft candidate(s) including Hough lines.
+  Matched 11 undirected edge(s) (max endpoint dist=86.1px, rejected=522).
+  Wrote relationship debug overlay to D:\Third year\DL\CP\Project_Original\data\debug\flowchart_clean_b\relationship_debug.png
+  Wrote line-detection debug panel to D:\Third year\DL\CP\Project_Original\data\debug\flowchart_clean_b\line_debug.png
+  Graph: 13 nodes, 11 edges.
+ nodes=13  edges=11  contour_arrows=12  hough=82
+ debug=D:\Third year\DL\CP\Project_Original\data\debug\flowchart_clean_b\relationship_debug.png
+ directed edges:
+   0:box('Node_0') -> 1:box('Node_1')
+   0:box('Node_0') -> 4:box('Node_4')
+   2:box('Node_2') -> 3:box('Node_3')
+   3:box('Node_3') -> 5:box('Node_5')
+   4:box('Node_4') -> 1:box('Node_1')
+   6:box('Node_6') -> 11:diamond('Node_11')
+   7:box('Node_7') -> 11:diamond('Node_11')
+   8:box('Node_8') -> 9:circle('Node_9')
+   10:circle('Node_10') -> 8:box('Node_8')
+   12:box('Node_12') -> 6:box('Node_6')
+   12:box('Node_12') -> 11:diamond('Node_11')
+ Evaluation Metrics (Directed):
+   Expected: 11  Detected: 11  TP: 7  FP: 4  FN: 4
+   Directed Precision: 0.636  Directed Recall: 0.636  Directed F1: 0.636  Direction Accuracy: 0.636
+   Missed Directed Edges (FN): [(1, 4), (6, 12), (8, 10), (11, 12)]
+   False Positive Directed Edges (FP): [(4, 1), (10, 8), (12, 6), (12, 11)]
+
+=== val_flowchart_1 ===
+  Localized 4 compact and 3 elongated contour(s); 51 raw Hough line(s) merged to 35 connector(s).
+  Classifier kept 4 shape node(s) and 3 contour arrow(s); matching uses 38 shaft candidate(s) including Hough lines.
+  Matched 3 undirected edge(s) (max endpoint dist=75.1px, rejected=323).
+  Wrote relationship debug overlay to D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_1\relationship_debug.png
+  Wrote line-detection debug panel to D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_1\line_debug.png
+  Graph: 4 nodes, 3 edges.
+ nodes=4  edges=3  contour_arrows=3  hough=35
+ debug=D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_1\relationship_debug.png
+ directed edges:
+   1:diamond('Node_1') -> 0:circle('Node_0')
+   2:box('Node_2') -> 1:diamond('Node_1')
+   3:box('Node_3') -> 2:box('Node_2')
+ Evaluation Metrics (Directed):
+   Expected: 3  Detected: 3  TP: 3  FP: 0  FN: 0
+   Directed Precision: 1.000  Directed Recall: 1.000  Directed F1: 1.000  Direction Accuracy: 1.000
+
+=== val_flowchart_2 ===
+  Localized 5 compact and 5 elongated contour(s); 38 raw Hough line(s) merged to 27 connector(s).
+  Classifier kept 5 shape node(s) and 5 contour arrow(s); matching uses 32 shaft candidate(s) including Hough lines.
+  Matched 4 undirected edge(s) (max endpoint dist=83.0px, rejected=146).
+  Wrote relationship debug overlay to D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_2\relationship_debug.png
+  Wrote line-detection debug panel to D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_2\line_debug.png
+  Graph: 5 nodes, 4 edges.
+ nodes=5  edges=4  contour_arrows=5  hough=27
+ debug=D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_2\relationship_debug.png
+ directed edges:
+   1:box('Node_1') -> 3:circle('Node_3')
+   2:box('Node_2') -> 4:diamond('Node_4')
+   4:diamond('Node_4') -> 0:box('Node_0')
+   4:diamond('Node_4') -> 1:box('Node_1')
+ Evaluation Metrics (Directed):
+   Expected: 4  Detected: 4  TP: 4  FP: 0  FN: 0
+   Directed Precision: 1.000  Directed Recall: 1.000  Directed F1: 1.000  Direction Accuracy: 1.000
+
+=== val_flowchart_3 ===
+  Localized 4 compact and 4 elongated contour(s); 77 raw Hough line(s) merged to 41 connector(s).
+  Classifier kept 4 shape node(s) and 4 contour arrow(s); matching uses 45 shaft candidate(s) including Hough lines.
+  Matched 4 undirected edge(s) (max endpoint dist=69.0px, rejected=376).
+  Wrote relationship debug overlay to D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_3\relationship_debug.png
+  Wrote line-detection debug panel to D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_3\line_debug.png
+  Graph: 4 nodes, 4 edges.
+ nodes=4  edges=4  contour_arrows=4  hough=41
+ debug=D:\Third year\DL\CP\Project_Original\data\debug\val_flowchart_3\relationship_debug.png
+ directed edges:
+   0:box('Node_0') -> 1:circle('Node_1')
+   2:circle('Node_2') -> 0:box('Node_0')
+   2:circle('Node_2') -> 3:box('Node_3')
+   3:box('Node_3') -> 1:circle('Node_1')
+ Evaluation Metrics (Directed):
+   Expected: 4  Detected: 4  TP: 4  FP: 0  FN: 0
+   Directed Precision: 1.000  Directed Recall: 1.000  Directed F1: 1.000  Direction Accuracy: 1.000
+
+================ BENCHMARK SUMMARY ================
+Fixtures Evaluated: 6
+Total Expected Edges: 35
+Total Detected Edges: 35
+Total TP: 26  FP: 9  FN: 9
+Micro-Averaged Directed Precision: 0.743
+Micro-Averaged Directed Recall:    0.743
+Micro-Averaged Directed F1-Score:  0.743
+Overall Direction Accuracy:        0.743
+===================================================
+
